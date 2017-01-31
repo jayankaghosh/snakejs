@@ -6,16 +6,19 @@ snakeJS.prototype = {
 	_game_speed : 50,
 	_block_size : 20,
 	_game_colors : {
+		background : "#0A0A0A",
 		primary : "#FFFFFF",
-		secondary: "#0000FF"
+		secondary: "yellow"
 	},
+	_special_food_frequency : 0.25,
 	start : function(gamespeed, blocksize, allowtouch){
 		if(!allowtouch){
 			this.isTouchDevice = function(){
 				return false;
 			}
 		}
-		this._game_speed = gamespeed;
+		this.canvas.style.backgroundColor = this._game_colors.background;
+		this._game_speed_orig = gamespeed;
 		this._block_size = blocksize;
 		if(this.isTouchDevice){
 			this._block_size*2;
@@ -43,6 +46,7 @@ snakeJS.prototype = {
 		this.snakeDirection = this.directioncodes["RIGHT"];
 	},
 	_init : function(){
+		this._game_speed = this._game_speed_orig;
 		this._game_paused = true;
 		this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
 		this.context.font="bold "+this._block_size*2+"px Courier";
@@ -79,9 +83,9 @@ snakeJS.prototype = {
 		if(!this._game_paused){
 			return;
 		}
-		this.requestFullscreen();
 		var ctx = this;
 		if(e.keyCode == 32){
+			this.requestFullscreen();
 			var initSnakePos = {
 				dx : ctx.randomInt(ctx._block_size, game.width-ctx._block_size),
 				dy : ctx.randomInt(ctx._block_size, game.height-ctx._block_size),
@@ -173,6 +177,7 @@ snakeJS.prototype = {
 		var ctx = this;
 		this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
 		this.drawScore();
+		this.drawTimer();
 		this.draw(this.foodPoint);
 		this.drawSnake();
 		window.requestAnimationFrame(function(){
@@ -181,6 +186,14 @@ snakeJS.prototype = {
 			}
 			setTimeout(ctx.gameLoop.bind(ctx), ctx._game_speed);
 		});
+	},
+	drawTimer : function(){
+		if(this._timer > 0){
+			this.context.textAlign = "left";
+			this.context.fillStyle = this._game_colors.secondary;
+			this.context.font=this._block_size*3+"px Arial";
+			this.context.fillText(this._timer,this.canvas.width-this._block_size*4,this.canvas.height-this._block_size*4);
+		}
 	},
 	drawScore : function(){
 		this.context.fillStyle = this._game_colors.primary;
@@ -227,9 +240,22 @@ snakeJS.prototype = {
 
 	},
 	growSnake : function(point){
+		var increment = 1;
+		if(point.color == this._game_colors.secondary){
+			increment = 10;
+		}
 		point.color = this._game_colors.primary;
 		this.snake.push(point);
-		this.score++;
+		this.incrementScore(increment);
+	},
+	incrementScore : function(increment){
+		this.score += increment;
+		if(this.score%4==0){
+			this._game_speed-=5;
+			if(this._game_speed < 5){
+				this._game_speed = 5;
+			}
+		}
 	},
 	checkBoundingRectangles : function(obj1, obj2){
 
@@ -276,8 +302,19 @@ snakeJS.prototype = {
 	},
 	makeNewFood : function(){
 		var new_food = this.food();
+		while(this.foodInsideSnake(new_food)){
+			new_food = this.food();
+		}
 		this.foodPoint = new_food;
 		return true;
+	},
+	foodInsideSnake : function(food){
+		for(var i = 0; i < this.snake.length; i++){
+			if(this.checkBoundingRectangles(this.snake[this.snake.length-1], food)){
+				return true;
+			}
+		}
+		return false;
 	},
 	draw : function(data){
 		if(!this.isValidPoint(data)){
@@ -299,14 +336,28 @@ snakeJS.prototype = {
 	    return Math.round((_random_int/this._block_size)*this._block_size);
 	},
 	food : function(){
+		this._timer = 0;
+		clearInterval(this.timerLoop);
 		var padding = 2*this._block_size,
-			food_color = this.randomInt(0,100*this._block_size)<=this._block_size?this._game_colors.secondary:this._game_colors.primary;
+			food_color = this.randomInt(0,100*this._block_size)<=(this._special_food_frequency*100*this._block_size)?this._game_colors.secondary:this._game_colors.primary;
 		var data = {
 			dx : this.randomInt(padding, this.canvas.width-padding),
 			dy : this.randomInt(padding, this.canvas.height-padding),
 			width : this._block_size,
 			height : this._block_size,
 			color: food_color
+		}
+		if(data.color == this._game_colors.secondary){
+			var ctx = this;
+			this._timer = 5;
+			this.timerLoop = setInterval(function(){
+				if(ctx._timer < 2){
+					ctx.makeNewFood();
+					clearInterval(ctx.timerLoop);
+					return;
+				}
+				ctx._timer--;
+			}, 1000);
 		}
 		return data;
 	},
