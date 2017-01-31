@@ -9,10 +9,10 @@ var snakeJS = function(canvas){
 				primary : "#FFFFFF",
 				secondary: "#0000FF"
 			},
-			start : function(gamespeed, blocksize, highscore){
+			start : function(gamespeed, blocksize){
 				this._game_speed = gamespeed;
 				this._block_size = blocksize;
-				this.highscore = highscore;
+				this.highscore = this.getHighscore();
 				this._init();
 				this.directioncodes = {
 					"LEFT" : {
@@ -33,15 +33,6 @@ var snakeJS = function(canvas){
 					}
 				};
 				this.snakeDirection = this.directioncodes["RIGHT"];
-				var initSnakePos = {
-					dx : this.randomInt(this._block_size, game.width-this._block_size),
-					dy : this.randomInt(this._block_size, game.height-this._block_size),
-					width : this._block_size,
-					height : this._block_size,
-					color: this._game_colors.primary
-				}
-				this.snake[this.snake.length] = initSnakePos;
-				this.makeNewFood();
 			},
 			_init : function(){
 				this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -51,7 +42,7 @@ var snakeJS = function(canvas){
 				this.context.fillText("SNAKE-JS	by j0y",this.canvas.width/2,this.canvas.height/4);
 				this.context.font=this._block_size*2+"px Arial";
 				this.context.fillText("Press spacebar to play",this.canvas.width/2,this.canvas.height/2);
-				if(typeof(this.highscore) == "object"){
+				if(typeof(this.highscore) == "object" && this.highscore.score){
 					this.context.fillText("Highscore- "+this.highscore.name+", "+this.highscore.score,this.canvas.width/2,this.canvas.height/1.5);
 				}
 				this.context.textAlign = "left";
@@ -60,27 +51,42 @@ var snakeJS = function(canvas){
 				this.moving = false;
 				this.score = 0;
 				var ctx = this;
-				window.addEventListener("keydown", function(e){
-					if(e.keyCode == 32){
-						ctx.addSnakeListener();
-						ctx.gameLoop();
+				window.removeEventListener("keydown", ctx._init_start);
+				window.addEventListener("keydown", ctx._init_start.bind(ctx));
+			},
+			_init_start : function(e){
+				var ctx = this;
+				if(e.keyCode == 32){
+					var initSnakePos = {
+						dx : ctx.randomInt(ctx._block_size, game.width-ctx._block_size),
+						dy : ctx.randomInt(ctx._block_size, game.height-ctx._block_size),
+						width : ctx._block_size,
+						height : ctx._block_size,
+						color: ctx._game_colors.primary
 					}
-				});
+					ctx.snake[ctx.snake.length] = initSnakePos;
+					ctx.makeNewFood();
+					ctx.addSnakeListener();
+					this._game_paused = false;
+					ctx.gameLoop();
+				}
 			},
 			addSnakeListener : function(){
+				var ctx = this;
+				window.removeEventListener("keydown", ctx._snakelistener);
+				window.addEventListener("keydown", ctx._snakelistener.bind(ctx));
+			},
+			_snakelistener(e){
 				var _event_codes = {
 					37 : "LEFT",
 					38 : "UP",
 					39 : "RIGHT",
 					40 : "DOWN"
 				};
-				var ctx = this;
-				window.addEventListener("keydown", function(e){
-					var direction = _event_codes[e.keyCode];
-					if(direction){
-						ctx.setSnakeDirection(direction);
-					}
-				});
+				var direction = _event_codes[e.keyCode];
+				if(direction){
+					this.setSnakeDirection(direction);
+				}
 			},
 			setSnakeDirection : function(direction){
 				if(this.moving){
@@ -114,6 +120,9 @@ var snakeJS = function(canvas){
 				this.draw(this.foodPoint);
 				this.drawSnake();
 				window.requestAnimationFrame(function(){
+					if(ctx._game_paused){
+						return;
+					}
 					setTimeout(ctx.gameLoop.bind(ctx), ctx._game_speed);
 				});
 			},
@@ -124,10 +133,16 @@ var snakeJS = function(canvas){
 			},
 			updateSnakePosition : function(){
 
-				//each point of tail takes it's next point's position
 				var current_head = this.snake[this.snake.length-1];
+				if(typeof(current_head) == "undefined"){
+					return false; //snake not present yet
+				}
+
+				//each point of tail takes it's next point's position
 				this.snake.shift();
+				
 				this.snake.push(JSON.parse(JSON.stringify(current_head)));
+
 
 				//head of snake takes next movable position
 				var snakeHead = this.snake[this.snake.length-1];
@@ -182,12 +197,14 @@ var snakeJS = function(canvas){
 				return false;
 			},
 			gameOver : function(){
+				this._game_paused = true;
 				var name = prompt("Game Over. Your score: "+this.score+"\n\nEnter Name");
-				if(this.score > this.highscore.score){
+				if(this.score > this.highscore.score || typeof(this.highscore.score) == "undefined"){
 					this.highscore = {
 						name: name,
 						score: this.score
 					}
+					this.setHighscore();
 				}
 				this._init();
 			},
@@ -217,7 +234,7 @@ var snakeJS = function(canvas){
 				this.context.stroke();
 			},
 			isValidPoint : function(data){
-				if(!data.dx || !data.dy || !data.width || !data.height || !data.color){
+				if(typeof(data)!="object" || !data.dx || !data.dy || !data.width || !data.height || !data.color){
 					return false;
 				}
 				return true;
@@ -227,15 +244,35 @@ var snakeJS = function(canvas){
 			    return Math.round((_random_int/this._block_size)*this._block_size);
 			},
 			food : function(){
-				var padding = 2*this._block_size;
+				var padding = 2*this._block_size,
+					food_color = this.randomInt(0,100*this._block_size)<=this._block_size?this._game_colors.secondary:this._game_colors.primary;
 				var data = {
 					dx : this.randomInt(padding, this.canvas.width-padding),
 					dy : this.randomInt(padding, this.canvas.height-padding),
 					width : this._block_size,
 					height : this._block_size,
-					color: this._game_colors.secondary
+					color: food_color
 				}
 				return data;
+			},
+			getHighscore : function(){
+				var cname = "_snakejs_highscore";
+			    var name = cname + "=";
+			    var ca = document.cookie.split(';');
+			    for(var i = 0; i <ca.length; i++) {
+			        var c = ca[i];
+			        while (c.charAt(0)==' ') {
+			            c = c.substring(1);
+			        }
+			        if (c.indexOf(name) == 0) {
+			            return JSON.parse(c.substring(name.length,c.length));
+			        }
+			    }
+			    return {name: "NA"};
+			},
+			setHighscore : function(){
+				var cname = "_snakejs_highscore",
+					cvalue = JSON.stringify(this.highscore);
+			    document.cookie = cname + "=" + cvalue + "; ";
 			}
-
 		}
