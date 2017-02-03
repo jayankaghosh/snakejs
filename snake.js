@@ -11,11 +11,15 @@ snakeJS.prototype = {
 		secondary: "yellow"
 	},
 	_special_food_frequency : 0.25,
-	start : function(gamespeed, blocksize, allowtouch){
+	start : function(classic, gamespeed, blocksize, allowtouch){
 		if(!allowtouch){
 			this.isTouchDevice = function(){
 				return false;
 			}
+		}
+		this._classic = classic;
+		if(this._classic == true){
+			this.canvas.style.border = blocksize+"px solid "+this._game_colors.primary;
 		}
 		this.canvas.style.backgroundColor = this._game_colors.background;
 		this._game_speed_orig = gamespeed;
@@ -79,6 +83,13 @@ snakeJS.prototype = {
 			window.addEventListener("keydown", ctx._init_start_keyboard.bind(ctx));
 		}
 	},
+	useMaze: function(mazeIndex){
+		mazeIndex = mazeIndex.toUpperCase();
+		if(typeof(snakeJSMazes[mazeIndex]) == "undefined"){
+			return false;
+		}
+		this._maze = snakeJSMazes[mazeIndex](this.canvas, this._block_size);
+	},
 	_init_start_keyboard : function(e){
 		if(!this._game_paused){
 			return;
@@ -92,6 +103,15 @@ snakeJS.prototype = {
 				width : ctx._block_size,
 				height : ctx._block_size,
 				color: ctx._game_colors.primary
+			}
+			while(ctx.foodInsideMaze(initSnakePos)){
+				initSnakePos = {
+					dx : ctx.randomInt(ctx._block_size, game.width-ctx._block_size),
+					dy : ctx.randomInt(ctx._block_size, game.height-ctx._block_size),
+					width : ctx._block_size,
+					height : ctx._block_size,
+					color: ctx._game_colors.primary
+				}
 			}
 			ctx.snake[ctx.snake.length] = initSnakePos;
 			ctx.makeNewFood();
@@ -112,6 +132,15 @@ snakeJS.prototype = {
 			width : ctx._block_size,
 			height : ctx._block_size,
 			color: ctx._game_colors.primary
+		}
+		while(ctx.foodInsideMaze(initSnakePos)){
+			initSnakePos = {
+				dx : ctx.randomInt(ctx._block_size, game.width-ctx._block_size),
+				dy : ctx.randomInt(ctx._block_size, game.height-ctx._block_size),
+				width : ctx._block_size,
+				height : ctx._block_size,
+				color: ctx._game_colors.primary
+			}
 		}
 		ctx.snake[ctx.snake.length] = initSnakePos;
 		ctx.makeNewFood();
@@ -176,16 +205,23 @@ snakeJS.prototype = {
 	gameLoop : function(){
 		var ctx = this;
 		this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-		this.drawScore();
+		this.drawMaze();
 		this.drawTimer();
 		this.draw(this.foodPoint);
 		this.drawSnake();
+		this.drawScore();
 		window.requestAnimationFrame(function(){
 			if(ctx._game_paused){
 				return;
 			}
 			setTimeout(ctx.gameLoop.bind(ctx), ctx._game_speed);
 		});
+	},
+	drawMaze : function(){
+		for(var i = 0; i < this._maze.length; i++){
+			this._maze[i].color = this._game_colors.primary;
+			this.draw(this._maze[i]);
+		}
 	},
 	drawTimer : function(){
 		if(this._timer > 0){
@@ -217,25 +253,39 @@ snakeJS.prototype = {
 		var snakeHead = this.snake[this.snake.length-1];
 		snakeHead.dx += this.snakeDirection.x;
 		snakeHead.dy += this.snakeDirection.y;
-
+		var border_crossed = false;
 		
 		//collision detection
 		if(snakeHead.dx <= this._block_size){
 			snakeHead.dx = this.canvas.width-this._block_size;
+			border_crossed = true;
 		}
 		else if(snakeHead.dx >= this.canvas.width-this._block_size){
 			snakeHead.dx = this._block_size;
+			border_crossed = true;
 		}
 		else if(snakeHead.dy <= this._block_size){
+			border_crossed = true;
 			snakeHead.dy = this.canvas.height-this._block_size;
 		}
 		else if(snakeHead.dy >= this.canvas.height-this._block_size){
+			border_crossed = true;
 			snakeHead.dy = this._block_size;
+		}
+		if(border_crossed && this._classic){
+			this.gameOver();
 		}
 		if(this.checkBoundingRectangles(this.snake[this.snake.length-1], this.foodPoint)){
 			//food collision
 			this.growSnake(this.foodPoint);
 			this.makeNewFood();
+		}
+
+		for(var i = 0; i < this._maze.length; i++){
+			if(this.checkBoundingRectangles(this.snake[this.snake.length-1], this._maze[i])){
+				//maze collision
+				this.gameOver();
+			}
 		}
 
 	},
@@ -302,6 +352,9 @@ snakeJS.prototype = {
 	},
 	makeNewFood : function(){
 		var new_food = this.food();
+		while(this.foodInsideMaze(new_food)){
+			new_food = this.food();
+		}
 		while(this.foodInsideSnake(new_food)){
 			new_food = this.food();
 		}
@@ -311,6 +364,14 @@ snakeJS.prototype = {
 	foodInsideSnake : function(food){
 		for(var i = 0; i < this.snake.length; i++){
 			if(this.checkBoundingRectangles(this.snake[this.snake.length-1], food)){
+				return true;
+			}
+		}
+		return false;
+	},
+	foodInsideMaze : function(food){
+		for(var i = 0; i < this._maze.length; i++){
+			if(this.checkBoundingRectangles(this._maze[i], food)){
 				return true;
 			}
 		}
@@ -404,5 +465,6 @@ snakeJS.prototype = {
 	            docElm.webkitRequestFullScreen();
 	        }
 	    }
-	}
+	},
+	_maze: []
 }
